@@ -67,7 +67,7 @@ Everything below targets **Claude Code**; aficionados are welcome to try other e
 ### 1C. Claude versions
 
 In this project, I used **Claude Opus 4.8**, with the personal paid "Max plan", in June 2026.<br/>
-Other editions probably work too, but this was not tested - and it's a moving target.
+Other editions probably work too, but this was not tested — and it's a moving target.
 
 ### 1D. Platforms
 
@@ -86,7 +86,7 @@ The skill output will display the location when done.
 ## 2. Install or Upgrade the ZIP-edition Skill
 
 ### 2A. Overview
-A skill is a set of instructions - packaged as a simple folder -<br/>
+A skill is a set of instructions — packaged as a simple folder —<br/>
 &nbsp; &nbsp; that teaches Claude how to handle specific tasks or workflows.
 
 Skills are one of the most powerful ways to customize Claude for your specific needs.
@@ -145,7 +145,7 @@ Archive:  web-print.skill
 
 ### 2D. Test the Claude Skill: Info
 
-Compare your browser's **Print to PDF** of a web-site, with the PDF results from **Web-Print**.
+Compare your browser's **Print to PDF** of a web site, with the PDF results from **Web-Print**.
 
 <details>
 <summary>Info commands (click to expand)</summary>
@@ -196,7 +196,7 @@ This **Plugin-edition Skill** is a **separate instance** from the **ZIP-edition 
 A different invocation name is used: `/johnb-plugins:web-print`
 
 Both editions can exist at the same time in Claude, invoked differently.<br/>
-To switch using only one Skill edition, just ask Claude to uninstall the other one - described below.
+To switch using only one Skill edition, just ask Claude to uninstall the other one — described below.
 
 **Claude Code CLI** vs **Desktop App**<br/>
 Claude Code comes in two forms, and they differ for *installing* a plugin:
@@ -341,7 +341,7 @@ $ claude plugin details johnb-plugins@john-d-b      # after it is installed
 
 ### 3D. Test the Claude Skill: Info
 
-Compare your browser's **Print to PDF** of a web-site, with the PDF results from **Web-Print**.
+Compare your browser's **Print to PDF** of a web site, with the PDF results from **Web-Print**.
 
 <details>
 <summary>Two ways to invoke it, with examples (click to expand)</summary>
@@ -504,7 +504,21 @@ Copyright © 2026, Mountain Informatik GmbH. Original software by John Buehrer.
 
 <br/>
 
-## 7. Credits
+## 7. Future Enhancements
+
+For consideration:
+
+1. **Wider coverage.**<br/>
+Handle additional malformed HTML constructions, beyond the overlays,<br/>
+&nbsp; &nbsp; sticky bars, and consent walls that Web-Print already mitigates.
+
+2. **A browser extension.**<br/>
+Recode Web-Print as a browser extension, for a more integrated experience —<br/>
+&nbsp; &nbsp; fix-and-print without leaving the page.
+
+<br/>
+
+## 8. Credits
 
 **Author**: John Buehrer (JohnB), with AI pair-programming support by Anthropic Claude Code<br/>
 **Date**:  Saturday 04. July 2026
