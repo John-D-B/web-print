@@ -1,6 +1,7 @@
 # Web-Print as a Claude Code Skill
-
 [![License: BUSL-1.1](images/license-badge.svg)](LICENSE)
+
+*It's not secure if it can't be printed — because there's no audit trail.*
 
 **Audience**: Humans and Claude bots alike.<br/>
 This repository illustrates deploying and running a Python script as a Claude **Skill**, then<br/>
