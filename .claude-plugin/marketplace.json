@@ -9,7 +9,7 @@
       "name": "johnb-plugins",
       "source": "./plugins/johnb-plugins",
       "description": "Render web pages to clean, paginated, print-ready PDFs.",
-      "version": "4.0.0",
+      "version": "4.1.0",
       "license": "BUSL-1.1"
     }
   ]

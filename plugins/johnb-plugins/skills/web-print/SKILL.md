@@ -52,7 +52,7 @@ NAME
     print-ready PDFs using headless Chromium.
 
 VERSION
-    4.0.0
+    4.1.0
 
 EXPLICIT COMMANDS (strict — nothing else triggers this skill)
     skill web-print run           # render; parameters follow as field: value
