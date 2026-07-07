@@ -53,7 +53,7 @@ Overlays & pop-ups:
   its links can). Reference an overlay by its index, its selector, or 'all'.
 """
 
-__version__ = "4.0.0"
+__version__ = "4.1.0"
 
 import argparse
 import functools
@@ -236,6 +236,35 @@ def find_chrome() -> str:
 # The patch. Identical defang/reveal/light-mode core for both orientations;
 # only the @page rule and column handling differ.
 # --------------------------------------------------------------------------- #
+def printer_safe_font_css() -> str:
+    """CSS that remaps the un-subsettable macOS system font to Arial for the render.
+
+    Headless Chromium (Skia/PDF) cannot subset the macOS system font — San
+    Francisco / `.SFNS`, a variable font reached via `system-ui` / `-apple-system`
+    — so it embeds every glyph as a Type 3 font. Type 3 fonts crash HP LaserJet
+    formatters ("49 Service Error"). Remapping those family keywords to Arial (a
+    plain static TrueType with real Regular/Bold/Italic faces) makes Chromium
+    embed normal CID TrueType instead: printer-safe, still selectable, smaller.
+    Only the system-font keywords are remapped — monospaced code and page-loaded
+    webfonts are untouched. On Linux/Windows those keywords don't resolve to San
+    Francisco anyway, and the local() lookups fall through to the page's own stack."""
+    keys = ["-apple-system", "BlinkMacSystemFont", "system-ui", "ui-sans-serif"]
+    faces = [
+        ("400", "normal", ["Arial", "ArialMT", "Helvetica", "Liberation Sans", "Arimo"]),
+        ("700", "normal", ["Arial Bold", "Arial-BoldMT", "Helvetica Bold", "Liberation Sans Bold"]),
+        ("400", "italic", ["Arial Italic", "Arial-ItalicMT", "Helvetica Italic", "Liberation Sans Italic"]),
+        ("700", "italic", ["Arial Bold Italic", "Arial-BoldItalicMT", "Liberation Sans Bold Italic"]),
+    ]
+    rules = ["/* (F) printer-safe fonts: remap the un-subsettable macOS system font",
+             "       (San Francisco/.SFNS -> Type 3 -> HP '49' crash) to Arial CID TrueType. */"]
+    for k in keys:
+        for w, s, locals_ in faces:
+            src = ", ".join(f'local("{n}")' for n in locals_)
+            rules.append(f'@font-face {{ font-family: "{k}"; src: {src};'
+                         f' font-weight: {w}; font-style: {s}; font-display: swap; }}')
+    return "\n".join(rules)
+
+
 def build_patch(orientation: str, scale: bool = False, mode: str = "audit",
                 width: int = 1100, keep=None) -> str:
     landscape = orientation == "landscape"
@@ -282,9 +311,12 @@ def build_patch(orientation: str, scale: bool = False, mode: str = "audit",
     keep_sels_js = json.dumps(keep_sels)
     audit_js = "true" if audit else "false"
 
+    font_rule = printer_safe_font_css()
+
     return rf"""
 <!-- ===== Claude web-print patch ({orientation}) ===== -->
 <style id="claude-web-print">
+{font_rule}
 /* (A) defang the broken bits (generic; the JS classifier below catches the rest) */
 [aria-modal="true"], [role="dialog"],
 iframe, ins.adsbygoogle {{ display: none !important; }}
