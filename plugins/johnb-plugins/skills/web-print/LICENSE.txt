@@ -1,0 +1,31 @@
+Web-Print — Skill License
+
+(c) 2026 Mountain Informatik GmbH. Original software by John Buehrer.
+
+SPDX-License-Identifier: BUSL-1.1 OR LicenseRef-MountainInformatik-Commercial
+
+This Skill -- SKILL.md, the bundled web-print.py script, and all accompanying
+files -- is source-available under the Business Source License 1.1 (BSL), with
+a commercial license available from Mountain Informatik GmbH.
+
+Under the BSL you may use Web-Print freely -- including for your own paid client
+work -- modify it, and self-host it. A commercial license is required only to
+offer Web-Print itself as a commercial product or service (hosted, embedded, or
+resold). Each released version converts to an open-source license (GPL v2.0 or
+later) on the Change Date stated in the repository LICENSE.
+
+Full terms are in the project repository -- this file does not reproduce them:
+
+  https://github.com/John-D-B/web-print
+
+    LICENSE          complete Business Source License 1.1 text + parameters
+    LICENSING.md     plain-English summary + commercial terms
+    CONTRIBUTING.md  contribution (inbound-license) policy
+
+The software is provided WITHOUT WARRANTY of any kind, to the extent permitted
+by applicable law. See the LICENSE file for the full disclaimer.
+
+"Web-Print" is a trademark of Mountain Informatik GmbH. The license grants no
+trademark rights; redistributed modified versions should use a different name.
+
+Commercial licensing enquiries: sales <at> mountain-informatik.ch

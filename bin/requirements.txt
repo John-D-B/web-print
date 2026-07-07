@@ -1,0 +1,26 @@
+# web-print.py — Python dependencies
+#
+# Default engine: Playwright. It manages its own pinned Chromium build, so the
+# tool works on any machine WITHOUT assuming a browser is already installed, and
+# renders identically for every user.
+#
+# Install (any OS):
+#     pip install -r requirements.txt
+#     playwright install chromium       # fetch Playwright's Chromium
+#
+# Optional — a virtual environment just keeps this out of your system Python
+# (delete it any time with `rm -rf .venv`):
+#     python3 -m venv .venv
+#     source .venv/bin/activate         # Windows: .venv\Scripts\activate
+#     ...then run the two install lines above.
+#
+# Recent Debian/Ubuntu block system-wide pip (PEP 668). There, either use the
+# venv above, or append --break-system-packages to the pip line.
+#
+# Opt-out engine: --chromium drives a Chromium-family browser already on your
+# machine (Chrome / Chromium / Brave / Edge) and needs NO Python packages — for
+# people who already have a browser and want to skip Playwright's download.
+# (Same engine, so the rendering is the same.)
+
+playwright>=1.40
+

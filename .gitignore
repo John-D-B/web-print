@@ -1,0 +1,11 @@
+.code
+.vscode
+.idea
+.DS_Store
+*.swp
+*.swo
+__pycache__/
+*.py[cod]
+.pytest_cache
+venv/
+.venv/
