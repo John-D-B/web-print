@@ -10,9 +10,10 @@ description: >
   STRICT INVOCATION (case-insensitive keywords `skill`, `run`, `help`, `version`,
   `license`). Act ONLY when a line is one of these: `skill web-print run` (render;
   parameters follow as `field: value` lines — required: source; optional: output,
-  overlay, width, suffix, engine, install, open); `skill web-print SOURCE [options]`
-  (source + flags inline); `skill web-print help`; `skill web-print version`;
-  `skill web-print license`. A reserved keyword after the name is a command, not a source.
+  overlay, width, suffix, collapse-hero, verbose, engine, install, open);
+  `skill web-print SOURCE [options]` (source + flags inline); `skill web-print help`;
+  `skill web-print version`; `skill web-print license`. A reserved keyword after
+  the name is a command, not a source.
 
   Otherwise do NOT trigger: casual mentions of web-to-PDF or the skill name are not
   triggers; ask for a proper `run` block.
@@ -36,117 +37,50 @@ Windows, and Linux/WSL-class systems.
 
 ## Quick reference (help output)
 
-This is what Claude shows verbatim when the user runs `skill web-print help`.
-Treat the fenced block as the canonical user-facing reference — do not paraphrase
-or summarise it, and do not add prose above or below it.
-
-The fenced block below is self-contained, including its `VERSION` line — show it
-verbatim, nothing added above or below. The version is embedded here on purpose:
-it needs no file read (so it never triggers a permission prompt), and it survives
-Cowork's "Replace" (which transfers only `SKILL.md`, not `version.txt`). When
-bumping, update BOTH the `VERSION` line below and the sibling `version.txt`.
+When the user runs `skill web-print help`: show the fenced block below verbatim,
+then run `<skill-dir>/scripts/web-print.py --help` and show ITS output verbatim
+beneath it. The script's `--help` is the single source of truth for behaviour,
+defaults, modes, and engines — never paraphrase or summarise it. The block below
+only covers what the script cannot know: the skill grammar and the field->flag map.
 
 ```
 NAME
-    web-print — render a saved web page or a remote URL to clean, paginated,
-    print-ready PDFs using headless Chromium.
+    web-print — render a saved web page or a URL to clean, print-ready PDFs.
 
-VERSION
-    4.3.0
+COMMANDS (strict — nothing else triggers this skill)
+    skill web-print run              # render; parameters follow as field: value
+    skill web-print SOURCE [opts]    # render; source + flags inline on one line
+    skill web-print help             # this block, then the script's own --help
+    skill web-print version          # print the version and stop
+    skill web-print license          # show the license and stop
 
-EXPLICIT COMMANDS (strict — nothing else triggers this skill)
-    skill web-print run           # render; parameters follow as field: value
-    skill web-print SOURCE [opts] # render; source + script flags inline on the line
-    skill web-print help          # show this Quick reference block
-    skill web-print version       # print the version and stop
-    skill web-print license       # show the license and stop
+PARAMETERS — each maps 1:1 onto a script option:
+    source: X            ->  X               (required; .html or http(s) URL)
+    output: DIR          ->  [tempdir]        (2nd positional)
+    overlay: SPEC        ->  -o SPEC
+    width: N             ->  --width N
+    suffix: NAME         ->  --suffix NAME
+    collapse-hero: true  ->  --collapse-hero
+    verbose: true        ->  -v
+    engine: chromium     ->  --chromium       (default: playwright)
+    install: true        ->  --install
+    open: false          ->  --no-open
 
-PARAMETERS (one per line after `skill web-print run`)
-    source       (required)  a saved .html file, or an http(s):// URL
-    output                   base output folder
-                             (default /tmp/claude/web-print on macOS/Linux)
-    overlay                  also print detected overlay(s) as an appendix:
-                             numbers, CSS selectors, or 'all' (comma-separated)
-    width                    render width in px for the 'page' layout (default 1100)
-    suffix                   tag the dated folder, e.g. senses -> 2026-07-01.senses
-    engine                   playwright | chromium         (default playwright)
-    install                  true  -> fetch Playwright + its Chromium first
-    open                     false -> do not open the PDFs when done
-    collapse-hero            true -> drop a decorative, near-empty lead "hero"
-                             banner that would otherwise print as a blank first
-                             page and push the title down (default off; the run
-                             auto-suggests it when a page needs it)
-
-MODES & LAYOUTS (both rendered every run)
-    modes    audit    images stripped, ink-friendly black-on-white
-             wysiwyg  images + brand colour kept, "what you see"
-    layouts  reflow   multi-column layouts stack to a single column
-             page     scale-to-fit; keeps the on-screen columns, shrunk
-    Every run produces both modes x {portrait,landscape}-{reflow,page} = 8 PDFs.
-
-ENGINES
-    playwright (default)  drives its own bundled Chromium; page.pdf() returns
-                          the bytes, so the script writes every file. Nothing
-                          lands in $HOME. Needs the Playwright package — pass
-                          install: true to fetch it, or use engine: chromium.
-    chromium              drives a Chrome/Chromium/Brave/Edge already on the
-                          machine, no Python dependency. Serves the page over
-                          localhost so it works even under a sandboxed (snap)
-                          browser. Point $CHROME at a specific binary if needed.
-
-SOURCES
-    local file   pass a .html; its sibling <name>_files/ assets resolve in place.
-    remote URL   pass http(s)://...; the page is navigated live and allowed to
-                 hydrate, then snapshotted — so JavaScript single-page apps
-                 (e.g. GitHub) render in full, not just the raw server shell.
-                 Assets load from the live origin. (--raw forces the old one-shot
-                 urllib fetch; run the script with --hidden for capture-control flags.)
-
-WHAT IT PRODUCES
-    A dated output folder with three subfolders:
-      html/     the patched working HTML for each variant
-      audit/    <name>_audit.{portrait,landscape}-{reflow,page}.pdf
-      wysiwyg/  <name>_wysiwyg.{portrait,landscape}-{reflow,page}.pdf
-    Opens the original page, then both portrait-page PDFs (audit + wysiwyg) — a
-    live before/after — unless open: false. If today's folder exists, older runs
-    rotate to <date>+, ++, ... so the bare date is newest.
-
-OVERLAYS
-    Every run prints a table of the fixed overlays/popups it detected and removed
-    (index, selector, type, name). Pass overlay: <numbers|selectors|all> to also
-    render chosen ones as an appendix — the content for a popup/dialog, the
-    extracted link list for a nav bar.
-
-WHAT IT DOES NOT DO
-    - Does not edit existing PDFs (use the `pdf` skill).
-    - Does not run a print job — only produces the file.
-    - Paper is A4; US-Letter and single-variant selection (--just) are reserved,
-      not yet active.
+EVERYTHING ELSE
+    The script's --help is the authority on behaviour, defaults, modes
+    (audit + wysiwyg x 4 layouts = 8 PDFs), engines, and overlays.
+    `skill web-print help` shows it verbatim below this block.
 
 EXAMPLES
     skill web-print run
-    source: https://en.wikipedia.org/wiki/PDF
+      source: https://en.wikipedia.org/wiki/PDF
 
-    skill web-print run
-    source: ~/Downloads/page.html
-    output: ~/pdfs
-    overlay: all
-
-    # inline — source and the script's own flags on one line:
     skill web-print https://en.wikipedia.org/wiki/PDF -o all
 
-    # a page-builder site that prints with a blank first page — collapse the hero:
+    # blank first page, title at the bottom? collapse the decorative banner:
     skill web-print run
-    source: https://www.example.com/
-    collapse-hero: true
-
-    # first run on a machine without Playwright — fetch its engine once:
-    skill web-print run
-    source: https://en.wikipedia.org/wiki/PDF
-    install: true
-
-    # Claude Code shorthand — source (and options) inline on one line:
-    /web-print https://en.wikipedia.org/wiki/PDF  install: true
+      source: https://www.example.com/
+      collapse-hero: true
 ```
 
 ## License (`skill web-print license` output)
@@ -198,9 +132,9 @@ When this skill is invoked, the harness provides its base directory (shown as
 search** (`find`, `ls` across `~`, etc.) to locate the skill — the path is already
 known, and searching only triggers needless permission prompts.
 
-For `skill web-print version`: print the `VERSION` shown in the Quick reference
-block above. It is already in context — do NOT read `version.txt` or any file
-(that path is outside the working dir and would trigger a prompt). Stop.
+For `skill web-print version`: run `<skill-dir>/scripts/web-print.py -V` and show
+its output — the version reported is always the script that will actually execute,
+so it can never drift from reality. Stop.
 
 For `skill web-print license`: show the fenced block under "## License" above,
 verbatim. It is already in context — do NOT read `LICENSE.txt` or any file. Stop.
@@ -240,6 +174,7 @@ to the script unchanged; treat an inline `--install` as equivalent to
    | install  | `true` -> `--install`                                |
    | open     | `false` -> `--no-open`                               |
    | collapse-hero | `true` -> `--collapse-hero`                     |
+   | verbose  | `true` -> `-v`                                       |
 
    There is no orientation/layout field: every run renders both modes and all
    four orientation/layout variants. (Selecting a single one is the reserved
@@ -248,7 +183,7 @@ to the script unchanged; treat an inline `--install` as equivalent to
    Example resulting invocation:
 
    ```
-   python3 <skill-dir>/scripts/web-print.py "https://example.com/" ~/pdfs -o all --suffix demo
+   python3 <skill-dir>/scripts/web-print.py "https://example.com/" ~/pdfs -o all
    ```
 
 3. Run it with the Bash tool. The script prints its settings, the eight produced
