@@ -6,7 +6,8 @@ web-print.py — turn a saved web page into a clean, paginated, printable PDF.
 
 Usage:
     python3 web-print.py <source> [tempdir] [--just SPEC] [-o SPEC] [--width N]
-                         [--suffix NAME] [--chromium] [--install] [--no-open]
+                         [--suffix NAME] [--collapse-hero] [-v] [--chromium]
+                         [--install] [--no-open]
 
 Every run renders both image modes into a dated output folder and opens two of
 them side by side:
@@ -29,6 +30,12 @@ Arguments:
                   Also print the given overlay(s) as an appendix: numbers from
                   the detected list, CSS selectors, or 'all' (on-demand popups).
                   Repeatable and/or comma-separated.
+    --collapse-hero
+                  Hide a decorative lead banner ("hero") that would print as a
+                  page of blank paper, pulling the title back up to the top of
+                  page 1. For page-builder sites (Divi/WordPress and kin); a
+                  run that would benefit prints a note suggesting this flag.
+    -v/--verbose  Show untruncated detail (e.g. full overlay-table selectors).
 
 Behaviour:
     1. Reads the source HTML (file or URL) and cleans/patches it.
@@ -53,7 +60,7 @@ Overlays & pop-ups:
   its links can). Reference an overlay by its index, its selector, or 'all'.
 """
 
-__version__ = "4.1.0"
+__version__ = "4.3.0"
 
 import argparse
 import functools
@@ -139,6 +146,15 @@ def is_url(s: str) -> bool:
     return s.startswith("http://") or s.startswith("https://")
 
 
+def _is_number(s: str) -> bool:
+    """True if s parses as a number — tells a numeric --wait from a CSS selector."""
+    try:
+        float(s)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 def slug_from_url(url: str) -> str:
     """Filename stem from a URL, e.g. https://www.example.com/vacation/ -> example.com-vacation"""
     p = urlparse(url)
@@ -146,6 +162,41 @@ def slug_from_url(url: str) -> str:
     path = p.path.strip("/").replace("/", "-")
     stem = f"{host}-{path}" if path else host
     return "".join(c if c.isalnum() or c in "-._" else "-" for c in stem) or "page"
+
+
+# Stock phrases of common origin error pages (WordPress, gateways, CDNs). Matched
+# only against SMALL captures — a real article that merely mentions these survives.
+_ERROR_PAGE_SIGNS = [
+    "there has been a critical error on this website",   # WordPress wp_die()
+    "error establishing a database connection",          # WordPress DB down
+    "internal server error",
+    "502 bad gateway", "503 service unavailable",
+    "504 gateway time-out", "504 gateway timeout",
+    "origin is unreachable", "this page isn't working",
+    "attention required! | cloudflare",
+    "checking your browser before accessing",
+    "404 not found", "403 forbidden", "access denied",
+]
+
+
+def looks_like_error_page(html: str, status=None):
+    """Best-effort check that a capture is an origin ERROR page, not content.
+
+    A flaky origin can serve a transient error page that renders into a clean-
+    looking PDF of "There has been a critical error..." — worth a loud warning
+    instead of silence. Two signals: an HTTP error status (decisive), or a known
+    error phrase inside a small page (visible text under ~3000 chars, so pages
+    that merely *discuss* errors don't trip it). Returns a short reason, or None."""
+    if status is not None and status >= 400:
+        return f"HTTP {status}"
+    text = re.sub(r"(?is)<(script|style)\b.*?</\1\s*>", " ", html or "")
+    text = re.sub(r"(?s)<[^>]*>", " ", text)
+    text = re.sub(r"\s+", " ", text).strip().lower()
+    if len(text) < 3000:
+        for s in _ERROR_PAGE_SIGNS:
+            if s in text:
+                return f'"{s}"'
+    return None
 
 
 def fetch_url(url: str) -> str:
@@ -161,9 +212,15 @@ def fetch_url(url: str) -> str:
     })
     try:
         with urllib.request.urlopen(req, timeout=30) as r:  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-            return r.read().decode("utf-8", errors="replace")
+            body = r.read().decode("utf-8", errors="replace")
     except Exception as e:  # noqa: BLE001 — surface a clean message, not a traceback
         sys.exit(f"error: could not fetch {url}: {e}\n")
+    # urllib already raises on HTTP 4xx/5xx; this catches error pages served as 200.
+    err = looks_like_error_page(body)
+    if err:
+        print(f"  WARNING: the fetched page looks like a server ERROR page ({err});\n"
+              f"           rendering it anyway — check the site, or re-run later.")
+    return body
 
 
 class NLParser(argparse.ArgumentParser):
@@ -175,6 +232,36 @@ class NLParser(argparse.ArgumentParser):
         self.print_usage(sys.stderr)
         sys.stderr.write(f"{self.prog}: error: {message}\n\n")
         sys.exit(2)
+
+
+# Shown by --hidden (the experimental live-render flags are SUPPRESS-ed from --help;
+# keep this text in sync with their argparse definitions in main()).
+_HIDDEN_HELP = """hidden options (experimental — for testing pages we don't yet understand):
+  --raw               fetch raw server HTML via urllib (the pre-4.2 path), skipping
+                      live-render capture. Fast/offline; for sites that block
+                      headless navigation.
+                      default: OFF — live-render capture is used
+  --wait SPEC         how long to let a live page settle before capture:
+                      networkidle | <seconds> | <CSS selector>
+                      default: networkidle
+  --scroll [N]        scroll the live page first to load lazy content (bare = 1 pass)
+                      default: OFF — no scroll
+  --main [SELECTOR]   isolate a JS app's main content before render
+                      (bare tries: article.markdown-body, main, [role=main],
+                      article, #readme) — cleaner than the whole page
+                      default: OFF — renders the whole captured page
+"""
+
+
+class _HiddenHelpAction(argparse.Action):
+    """--hidden: print the normal help, then reveal the SUPPRESS-ed experimental flags."""
+    def __init__(self, option_strings, dest, **kw):
+        super().__init__(option_strings, dest, nargs=0, **kw)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        parser.print_help()
+        sys.stdout.write(_HIDDEN_HELP)
+        parser.exit()
 
 
 class NLHelpFormatter(argparse.HelpFormatter):
@@ -265,8 +352,71 @@ def printer_safe_font_css() -> str:
     return "\n".join(rules)
 
 
+# --collapse-hero (experimental, hidden): page-builder pages (Divi/WordPress) often
+# open with a large background-only "hero" banner plus a stretched title section —
+# printed, that becomes a near-blank page 1 with the title jammed at the bottom
+# (see Docs/2026-07-09.Print-Bugs.md). ACT=true: (1) hide leading tall blocks that
+# carry no real text; (2) on the first heading's ancestor chain, deflate stretchy
+# flex/min-height wrappers and — only when something WAS hidden — clear the
+# negative relative offsets that existed to overlap the now-gone banner.
+# ACT=false: measure only; stash the would-be-hidden pixels in
+# window.__wp_hero_hint so the run can *suggest* the flag. %s -> (AUDIT, ACT).
+_COLLAPSE_JS = """
+<script id="claude-web-print-collapse">
+(function () {
+  var AUDIT = %s, ACT = %s;
+  function collapseHero() {
+    if (!document.body) return;
+    var vh = innerHeight || 900;
+    var h = document.querySelector('h1, h2');
+    var hid = 0, hintPx = 0;
+    // (1) leading tall blocks with no real text — "hero" banners that print as
+    //     blank paper once backgrounds are stripped. "Tall and empty", not
+    //     "screen-height": real heroes are often a half-viewport band
+    //     (9senses: 500px). 240px ≈ a third of an A4 page.
+    var blocks = document.querySelectorAll(
+      'section, [class*="section"], [class*="hero"], [class*="banner"]');
+    for (var i = 0; i < blocks.length; i++) {
+      var el = blocks[i];
+      if (h && el.contains(h)) continue;               // never hide the title's own block
+      var r = el.getBoundingClientRect();
+      if (r.top > vh * 1.5) break;                     // leading zone only
+      if (r.height < Math.max(240, vh * 0.15)) continue;
+      var txt = (el.innerText || '').replace(/\\s+/g, ' ').trim();
+      if (txt.length > 60) continue;                   // real words -> content, keep
+      if (!AUDIT && el.querySelector('img')) continue; // wysiwyg keeps a photo hero
+      if (ACT) { el.style.setProperty('display', 'none', 'important'); hid++; }
+      else hintPx += r.height;
+    }
+    if (!ACT) {
+      if (hintPx > 0) window.__wp_hero_hint = Math.round(hintPx);
+      return;
+    }
+    // (2) the first heading's ancestor chain: deflate the stretchy box gap, and
+    //     — only if a banner was hidden — clear negative relative offsets that
+    //     were pulling the title UP to overlap it (else it prints decapitated).
+    for (var p = h && h.parentElement; p && p !== document.body; p = p.parentElement) {
+      var cs = getComputedStyle(p);
+      if (cs.display.indexOf('flex') >= 0 || cs.display.indexOf('grid') >= 0)
+        p.style.setProperty('display', 'block', 'important');
+      p.style.setProperty('min-height', '0', 'important');
+      p.style.setProperty('height', 'auto', 'important');
+      if (hid > 0) {
+        if (cs.position === 'relative' && parseFloat(cs.top) < 0)
+          p.style.setProperty('top', '0', 'important');
+        if (parseFloat(cs.marginTop) < 0)
+          p.style.setProperty('margin-top', '0', 'important');
+      }
+    }
+  }
+  if (document.readyState === 'complete') collapseHero();
+  window.addEventListener('load', collapseHero);
+})();
+</script>"""
+
+
 def build_patch(orientation: str, scale: bool = False, mode: str = "audit",
-                width: int = 1100, keep=None) -> str:
+                width: int = 1100, keep=None, collapse: bool = False) -> str:
     landscape = orientation == "landscape"
     audit = mode != "wysiwyg"       # audit strips imagery + recolours; wysiwyg keeps them
     page_size = "A4 landscape" if landscape else "A4"
@@ -312,6 +462,9 @@ def build_patch(orientation: str, scale: bool = False, mode: str = "audit",
     audit_js = "true" if audit else "false"
 
     font_rule = printer_safe_font_css()
+    # Always injected: ACT=true collapses; ACT=false only measures, so the run
+    # can suggest --collapse-hero when the page would benefit from it.
+    collapse_block = _COLLAPSE_JS % (audit_js, "true" if collapse else "false")
 
     return rf"""
 <!-- ===== Claude web-print patch ({orientation}) ===== -->
@@ -587,7 +740,7 @@ html, body {{ overflow: visible !important; height: auto !important;
   window.addEventListener('load', normalize);
   window.addEventListener('beforeprint', normalize);
 }})();
-</script>
+</script>{collapse_block}
 <!-- ===== end Claude web-print patch ===== -->
 """
 
@@ -642,7 +795,90 @@ def _scroll_to_load(page):
         pass
 
 
-def render_playwright(raw_html, items, width, src, source, chosen_labels, keep=None):
+def live_capture(url: str, wait: str = "networkidle", scroll=None, extract=None) -> str:
+    """Navigate the LIVE url, let it hydrate, freeze it, return HTML — same string
+    contract as fetch_url(), so it flows unchanged into the render pipeline.
+
+    Why not fetch_url(): a JavaScript single-page app (e.g. GitHub) ships its content
+    as embedded JSON and only becomes a page once its own JS hydrates it against the
+    live origin. urllib can't do that; a real browser navigation can. Three moves are
+    each required (all proven against the live GitHub README):
+      1. navigate live so the app hydrates;
+      2. FREEZE — strip the page's own <script>s, else re-rendering the saved HTML
+         re-runs the app and clobbers the DOM back to the un-hydrated JSON state;
+      3. optionally EXTRACT the main content element — even frozen, some app shells
+         clip the print to one page, and isolating the article prints it in full.
+    Every wait is bounded, so a never-idle page still yields a best-effort capture."""
+    from playwright.sync_api import sync_playwright
+    UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+          "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+    HEURISTIC = "article.markdown-body, main, [role=main], article, #readme"
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_context(user_agent=UA,
+                                   viewport={"width": 1280, "height": 1600}).new_page()
+
+        def attempt():
+            status = None
+            try:                                # (1) navigate live
+                resp = page.goto(url, wait_until="networkidle", timeout=30000)
+                status = resp.status if resp else None
+            except Exception:
+                try:
+                    resp = page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                    status = resp.status if resp else None
+                except Exception:
+                    pass                        # capture whatever loaded
+            try:                                # (2) stabilisation (--wait)
+                if wait == "networkidle":
+                    page.wait_for_function(
+                        "() => document.body && document.body.innerText.trim().length > 0",
+                        timeout=8000)
+                elif _is_number(wait):
+                    page.wait_for_timeout(min(float(wait), 60) * 1000)
+                else:                           # treat as a CSS selector to wait for
+                    page.wait_for_selector(wait, timeout=15000, state="visible")
+            except Exception:
+                pass
+            if scroll is not None:              # (3) coax lazy content in (bounded helper)
+                _scroll_to_load(page)
+            try:                                # (4) FREEZE: no re-hydration on re-render
+                page.evaluate("() => document.querySelectorAll('script').forEach(s => s.remove())")
+            except Exception:
+                pass
+            if extract is not None:             # (5) isolate main content, keep <head>/CSS
+                sels = HEURISTIC if extract is True else extract
+                try:
+                    page.evaluate("""(sels) => {
+                        let el = null;
+                        for (const s of sels.split(',')) { el = document.querySelector(s.trim()); if (el) break; }
+                        if (el) document.body.replaceChildren(el);
+                    }""", sels)
+                except Exception:
+                    pass                        # no match -> leave full page
+            return page.content(), status
+
+        # Error-page guard: a flaky origin can hand us its error page instead of
+        # the content. Retry once, then warn loudly rather than render in silence.
+        html, status = attempt()
+        err = looks_like_error_page(html, status)
+        if err:
+            print(f"  note: capture looks like a server error page ({err}) — retrying once ...")
+            try:
+                page.wait_for_timeout(2000)
+            except Exception:
+                pass
+            html, status = attempt()
+            err = looks_like_error_page(html, status)
+        if err:
+            print(f"  WARNING: the captured page still looks like a server ERROR page ({err});\n"
+                  f"           rendering it anyway — check the site, or re-run later.")
+        browser.close()
+    return html
+
+
+def render_playwright(raw_html, items, width, src, source, chosen_labels, keep=None,
+                      collapse=False):
     """Default engine. Drives Playwright's own Chromium; page.pdf() returns the
     bytes over the protocol, so the script writes every file — no localhost, no
     /dev/stdout, no sandbox or quarantine concerns. Assets resolve via <base
@@ -655,6 +891,7 @@ def render_playwright(raw_html, items, width, src, source, chosen_labels, keep=N
         sys.exit("error: no </body> in source\n")
     chosen_pdfs = []
     overlays = []
+    hero_hint = 0
     with sync_playwright() as p:
         try:
             browser = p.chromium.launch()
@@ -662,7 +899,7 @@ def render_playwright(raw_html, items, width, src, source, chosen_labels, keep=N
             sys.exit("error: Playwright's Chromium isn't installed.\n"
                      "  run:  playwright install chromium   (or re-run with --install)\n")
         for mode, orientation, scale, label, patched, pdf in items:
-            patched.write_text(html[:idx] + build_patch(orientation, scale, mode, width, keep) + html[idx:],
+            patched.write_text(html[:idx] + build_patch(orientation, scale, mode, width, keep, collapse) + html[idx:],
                                encoding="utf-8", errors="surrogatepass")
             vw = max(1400, width + 200) if scale else 1280
             page = browser.new_page(viewport={"width": vw, "height": 1600})
@@ -678,15 +915,21 @@ def render_playwright(raw_html, items, width, src, source, chosen_labels, keep=N
                     overlays = page.evaluate("() => window.__wp_overlays || []") or []
                 except Exception:
                     overlays = []
+            if not hero_hint:  # measure-only collapse detector (set when ACT=false)
+                try:
+                    hero_hint = page.evaluate("() => window.__wp_hero_hint || 0") or 0
+                except Exception:
+                    hero_hint = 0
             page.close()
             print(f"    {'*' if label in chosen_labels else ' '} {label}")
             if label in chosen_labels:
                 chosen_pdfs.append(pdf)
         browser.close()
-    return chosen_pdfs, overlays
+    return chosen_pdfs, overlays, hero_hint
 
 
-def render_chromium(raw_html, items, width, src, source, chosen_labels, keep=None):
+def render_chromium(raw_html, items, width, src, source, chosen_labels, keep=None,
+                    collapse=False):
     """Opt-out engine (--chromium). Drives a Chromium-family browser already on
     the machine, with no Python dependency. Serves the page over localhost and
     captures /dev/stdout so it works even under a sandbox (snap) — see serve_dir."""
@@ -715,7 +958,7 @@ def render_chromium(raw_html, items, width, src, source, chosen_labels, keep=Non
             sys.exit("error: no </body> in source\n")
         chosen_pdfs = []
         for mode, orientation, scale, label, patched, pdf in items:
-            patched.write_text(html[:idx] + build_patch(orientation, scale, mode, width, keep) + html[idx:],
+            patched.write_text(html[:idx] + build_patch(orientation, scale, mode, width, keep, collapse) + html[idx:],
                                encoding="utf-8", errors="surrogatepass")
             cmd = [chrome, "--headless", "--disable-gpu", "--no-pdf-header-footer",
                    *linux_flags, f"--window-size={window_size(orientation, scale, width)}",
@@ -737,7 +980,7 @@ def render_chromium(raw_html, items, width, src, source, chosen_labels, keep=Non
             print(f"    {'*' if label in chosen_labels else ' '} {label}")
             if label in chosen_labels:
                 chosen_pdfs.append(pdf)
-        return chosen_pdfs, []   # (overlay summary is a default-engine feature)
+        return chosen_pdfs, [], 0   # (overlay summary + hero hint are default-engine features)
     finally:
         httpd.shutdown()
 
@@ -747,6 +990,7 @@ def main() -> None:
                   formatter_class=NLHelpFormatter)
     ap.add_argument("-V", "--version", action="version",
                     version=f"%(prog)s {__version__}\n")
+    ap.add_argument("--hidden", action=_HiddenHelpAction, help=argparse.SUPPRESS)
     ap.add_argument("source", help="saved .html file, or an http(s):// URL")
     ap.add_argument("tempdir", nargs="?", metavar="[tempdir]",
                     help="output base dir for the dated run folder (default: per-OS scratch)")
@@ -764,8 +1008,21 @@ def main() -> None:
                     help="render width in px for the 'page' (scale-to-fit) layout (default 1100)")
     ap.add_argument("--suffix", default="",
                     help="tag the dated folder, e.g. --suffix vacation -> 2026-06-29.vacation")
+    ap.add_argument("--collapse-hero", action="store_true",
+                    help="hide a decorative lead banner (\"hero\") that would print as "
+                         "a page of blank paper, pulling the title back up to the top "
+                         "of page 1. For page-builder sites; a run that would benefit "
+                         "prints a note suggesting this flag.\n"
+                         "default: OFF")
+    ap.add_argument("-v", "--verbose", action="store_true",
+                    help="show untruncated detail (e.g. full overlay selectors)")
     ap.add_argument("--chromium", action="store_true",
                     help="use a Chromium-family browser already installed (no Playwright)")
+    # Undocumented (experimental) — live-render capture for JS single-page apps.
+    ap.add_argument("--raw", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--wait", default="networkidle", help=argparse.SUPPRESS)
+    ap.add_argument("--scroll", nargs="?", type=int, const=1, default=None, help=argparse.SUPPRESS)
+    ap.add_argument("--main", nargs="?", const=True, default=None, help=argparse.SUPPRESS)
     ap.add_argument("--install", action="store_true",
                     help="install Playwright + its Chromium, then run")
     ap.add_argument("--no-open", action="store_true",
@@ -802,8 +1059,15 @@ def main() -> None:
     # Read the source HTML. For a saved file, remember its folder so the sibling
     # <name>_files/ assets can be served alongside the patched copy below.
     src = None
+    # Default for URLs on the Playwright engine: live-capture (navigate + hydrate +
+    # freeze). --raw or --chromium keep the plain urllib snapshot.
+    live = is_url(args.source) and not args.chromium and not args.raw
     if is_url(args.source):
-        html = fetch_url(args.source)
+        if live:
+            install_playwright() if args.install else ensure_playwright()  # needed before capture
+            html = live_capture(args.source, args.wait, args.scroll, args.main)
+        else:
+            html = fetch_url(args.source)
         stem = slug_from_url(args.source)
     else:
         src = Path(args.source).expanduser().resolve()
@@ -828,7 +1092,8 @@ def main() -> None:
                           outdir / m / f"{stem}_{m}.{lab}.pdf"))
 
     print(f"{ap.prog} {__version__}")
-    print(f"  engine:      {'system Chromium' if args.chromium else 'Playwright'}")
+    fetch_note = " (live-capture)" if live else (" (raw fetch)" if is_url(args.source) and not args.chromium else "")
+    print(f"  engine:      {'system Chromium' if args.chromium else 'Playwright'}{fetch_note}")
     print(f"  source:      {args.source}")
     print(f"  width:       {args.width}px  (for the 'page' scale-to-fit layout)")
     print(f"  output dir:  {outdir}{os.sep}")
@@ -836,10 +1101,13 @@ def main() -> None:
     print("  variants:")
 
     if args.chromium:
-        chosen_pdfs, overlays = render_chromium(html, items, args.width, src, args.source, chosen_labels, keep)
+        chosen_pdfs, overlays, hero_hint = render_chromium(
+            html, items, args.width, src, args.source, chosen_labels, keep, args.collapse_hero)
     else:
-        install_playwright() if args.install else ensure_playwright()
-        chosen_pdfs, overlays = render_playwright(html, items, args.width, src, args.source, chosen_labels, keep)
+        if not live:                       # the live-URL path already ensured Playwright
+            install_playwright() if args.install else ensure_playwright()
+        chosen_pdfs, overlays, hero_hint = render_playwright(
+            html, items, args.width, src, args.source, chosen_labels, keep, args.collapse_hero)
 
     # FYI page-snoop: overlays the patch found and neutralised for print.
     seen, uniq = set(), []
@@ -853,7 +1121,15 @@ def main() -> None:
         rows = [{"n": 0, "sel": "html body", "type": "document",
                  "print": "always", "label": "the page itself", "kept": False}]
         rows += [{**o, "print": "on-demand"} for o in uniq]
-        w = min(max(len("selector"), *(len(r["sel"]) for r in rows)), 48)
+
+        # Long framework selectors/names are truncated with an ellipsis so the
+        # table stays in the terminal; -v/--verbose shows them in full.
+        def cut(s, n):
+            return s if args.verbose or len(s) <= n else s[: n - 3] + "..."
+        for r in rows:
+            r["sel"] = cut(r["sel"], 48)
+            r["label"] = cut(r["label"], 28)
+        w = max(len("selector"), *(len(r["sel"]) for r in rows))
         nw = max(1, len(str(max(r["n"] for r in rows))))   # index column width
         kept = [o for o in uniq if o.get("kept")]
         head = f"  overlays & popups detected ({len(uniq)})"
@@ -865,8 +1141,16 @@ def main() -> None:
         print(f"      {'-'*nw}  {'-'*w} {'-'*13} {'-'*9} {'-'*28}")
         for r in rows:
             mark = "*" if r.get("kept") else " "
-            print(f"    {mark} {r['n']:>{nw}}  {r['sel']:<{w}} {r['type']:<13} {r['print']:<9} {r['label'][:28]}")
+            print(f"    {mark} {r['n']:>{nw}}  {r['sel']:<{w}} {r['type']:<13} {r['print']:<9} {r['label']}")
         print()
+
+    # Suggestion from the measure-only collapse detector (never set when the
+    # flag is already on): the page leads with big empty banner space.
+    if hero_hint:
+        print(f"  note: the page opens with a large, nearly-empty banner "
+              f"(~{int(hero_hint * 0.75)}pt of blank paper).\n"
+              f"  If page 1 prints mostly blank with the title far down, re-run adding:\n"
+              f"      --collapse-hero\n")
 
     if args.no_open:
         print("  opening:     no (--no-open)")

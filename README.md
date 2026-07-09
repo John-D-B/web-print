@@ -132,13 +132,13 @@ $ unzip -l web-print.skill
 Archive:  web-print.skill
   Length      Date    Time    Name
 ---------  ---------- -----   ----
-    12102  07-05-2026 15:25   web-print/SKILL.md
-        6  07-03-2026 23:13   web-print/version.txt
+    13199  07-09-2026 18:51   web-print/SKILL.md
+        6  07-09-2026 18:17   web-print/version.txt
      1466  07-05-2026 15:25   web-print/LICENSE.txt
      1092  07-02-2026 10:29   web-print/scripts/requirements.txt
-    41907  07-03-2026 23:24   web-print/scripts/web-print.py
+    58951  07-09-2026 18:45   web-print/scripts/web-print.py
 ---------                     -------
-    56573                     5 files
+    74714                     5 files
 ```
 
 </details>

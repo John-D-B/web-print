@@ -52,7 +52,7 @@ NAME
     print-ready PDFs using headless Chromium.
 
 VERSION
-    4.1.0
+    4.3.0
 
 EXPLICIT COMMANDS (strict — nothing else triggers this skill)
     skill web-print run           # render; parameters follow as field: value
@@ -72,6 +72,10 @@ PARAMETERS (one per line after `skill web-print run`)
     engine                   playwright | chromium         (default playwright)
     install                  true  -> fetch Playwright + its Chromium first
     open                     false -> do not open the PDFs when done
+    collapse-hero            true -> drop a decorative, near-empty lead "hero"
+                             banner that would otherwise print as a blank first
+                             page and push the title down (default off; the run
+                             auto-suggests it when a page needs it)
 
 MODES & LAYOUTS (both rendered every run)
     modes    audit    images stripped, ink-friendly black-on-white
@@ -92,7 +96,11 @@ ENGINES
 
 SOURCES
     local file   pass a .html; its sibling <name>_files/ assets resolve in place.
-    remote URL   pass http(s)://...; assets load from the live origin.
+    remote URL   pass http(s)://...; the page is navigated live and allowed to
+                 hydrate, then snapshotted — so JavaScript single-page apps
+                 (e.g. GitHub) render in full, not just the raw server shell.
+                 Assets load from the live origin. (--raw forces the old one-shot
+                 urllib fetch; run the script with --hidden for capture-control flags.)
 
 WHAT IT PRODUCES
     A dated output folder with three subfolders:
@@ -126,6 +134,11 @@ EXAMPLES
 
     # inline — source and the script's own flags on one line:
     skill web-print https://en.wikipedia.org/wiki/PDF -o all
+
+    # a page-builder site that prints with a blank first page — collapse the hero:
+    skill web-print run
+    source: https://www.example.com/
+    collapse-hero: true
 
     # first run on a machine without Playwright — fetch its engine once:
     skill web-print run
@@ -204,8 +217,10 @@ verbatim. It is already in context — do NOT read `LICENSE.txt` or any file. St
 
 For the run-block form, map `field: value` lines with the table below. For the
 inline forms, pass the source and any flags (`-o all`, `--width N`, `--suffix`,
-`--chromium`, `--install`, `--no-open`) straight through to the script unchanged;
-treat an inline `--install` as equivalent to `install: true`. Then:
+`--collapse-hero`, `-v`, `--chromium`, `--install`, `--no-open`, and the
+experimental capture flags `--raw`/`--wait`/`--scroll`/`--main`) straight through
+to the script unchanged; treat an inline `--install` as equivalent to
+`install: true`. Then:
 
 1. Parse the parameters. `source` is required — if it is missing, show a
    one-line error pointing at `skill web-print help` and stop. Ignore unknown
@@ -224,6 +239,7 @@ treat an inline `--install` as equivalent to `install: true`. Then:
    | engine   | `chromium` -> `--chromium`; `playwright` -> nothing  |
    | install  | `true` -> `--install`                                |
    | open     | `false` -> `--no-open`                               |
+   | collapse-hero | `true` -> `--collapse-hero`                     |
 
    There is no orientation/layout field: every run renders both modes and all
    four orientation/layout variants. (Selecting a single one is the reserved
@@ -239,7 +255,8 @@ treat an inline `--install` as equivalent to `install: true`. Then:
    files grouped under `audit/` and `wysiwyg/` (the two opened marked `*`), the
    overlay table, and the paths it opened. Relay that output; surface any
    `error:` line the script emits (missing Playwright, no Chromium found, source
-   not found) rather than burying it.
+   not found) rather than burying it. If it prints a `note:` suggesting
+   `--collapse-hero` (a page opening with a large blank banner), pass that along.
 
 4. If the default engine reports Playwright is missing, offer the two documented
    fixes: re-run with `install: true`, or `engine: chromium` to drive a browser
