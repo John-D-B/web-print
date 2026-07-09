@@ -53,7 +53,7 @@ Overlays & pop-ups:
   its links can). Reference an overlay by its index, its selector, or 'all'.
 """
 
-__version__ = "4.1.0"
+__version__ = "4.2.0"
 
 import argparse
 import functools
@@ -139,6 +139,15 @@ def is_url(s: str) -> bool:
     return s.startswith("http://") or s.startswith("https://")
 
 
+def _is_number(s: str) -> bool:
+    """True if s parses as a number — tells a numeric --wait from a CSS selector."""
+    try:
+        float(s)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 def slug_from_url(url: str) -> str:
     """Filename stem from a URL, e.g. https://www.example.com/vacation/ -> example.com-vacation"""
     p = urlparse(url)
@@ -175,6 +184,36 @@ class NLParser(argparse.ArgumentParser):
         self.print_usage(sys.stderr)
         sys.stderr.write(f"{self.prog}: error: {message}\n\n")
         sys.exit(2)
+
+
+# Shown by --hidden (the experimental live-render flags are SUPPRESS-ed from --help;
+# keep this text in sync with their argparse definitions in main()).
+_HIDDEN_HELP = """hidden options (experimental — for testing pages we don't yet understand):
+  --raw               fetch raw server HTML via urllib (the pre-4.2 path), skipping
+                      live-render capture. Fast/offline; for sites that block
+                      headless navigation.
+                      default: OFF — live-render capture is used
+  --wait SPEC         how long to let a live page settle before capture:
+                      networkidle | <seconds> | <CSS selector>
+                      default: networkidle
+  --scroll [N]        scroll the live page first to load lazy content (bare = 1 pass)
+                      default: OFF — no scroll
+  --main [SELECTOR]   isolate a JS app's main content before render
+                      (bare tries: article.markdown-body, main, [role=main],
+                      article, #readme) — cleaner than the whole page
+                      default: OFF — renders the whole captured page
+"""
+
+
+class _HiddenHelpAction(argparse.Action):
+    """--hidden: print the normal help, then reveal the SUPPRESS-ed experimental flags."""
+    def __init__(self, option_strings, dest, **kw):
+        super().__init__(option_strings, dest, nargs=0, **kw)
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        parser.print_help()
+        sys.stdout.write(_HIDDEN_HELP)
+        parser.exit()
 
 
 class NLHelpFormatter(argparse.HelpFormatter):
@@ -642,6 +681,67 @@ def _scroll_to_load(page):
         pass
 
 
+def live_capture(url: str, wait: str = "networkidle", scroll=None, extract=None) -> str:
+    """Navigate the LIVE url, let it hydrate, freeze it, return HTML — same string
+    contract as fetch_url(), so it flows unchanged into the render pipeline.
+
+    Why not fetch_url(): a JavaScript single-page app (e.g. GitHub) ships its content
+    as embedded JSON and only becomes a page once its own JS hydrates it against the
+    live origin. urllib can't do that; a real browser navigation can. Three moves are
+    each required (all proven against the live GitHub README):
+      1. navigate live so the app hydrates;
+      2. FREEZE — strip the page's own <script>s, else re-rendering the saved HTML
+         re-runs the app and clobbers the DOM back to the un-hydrated JSON state;
+      3. optionally EXTRACT the main content element — even frozen, some app shells
+         clip the print to one page, and isolating the article prints it in full.
+    Every wait is bounded, so a never-idle page still yields a best-effort capture."""
+    from playwright.sync_api import sync_playwright
+    UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+          "(KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+    HEURISTIC = "article.markdown-body, main, [role=main], article, #readme"
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_context(user_agent=UA,
+                                   viewport={"width": 1280, "height": 1600}).new_page()
+        try:                                    # (1) navigate live
+            page.goto(url, wait_until="networkidle", timeout=30000)
+        except Exception:
+            try:
+                page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            except Exception:
+                pass                            # capture whatever loaded
+        try:                                    # (2) stabilisation (--wait)
+            if wait == "networkidle":
+                page.wait_for_function(
+                    "() => document.body && document.body.innerText.trim().length > 0",
+                    timeout=8000)
+            elif _is_number(wait):
+                page.wait_for_timeout(min(float(wait), 60) * 1000)
+            else:                               # treat as a CSS selector to wait for
+                page.wait_for_selector(wait, timeout=15000, state="visible")
+        except Exception:
+            pass
+        if scroll is not None:                  # (3) coax lazy content in (bounded helper)
+            _scroll_to_load(page)
+        try:                                    # (4) FREEZE: no re-hydration on re-render
+            page.evaluate("() => document.querySelectorAll('script').forEach(s => s.remove())")
+        except Exception:
+            pass
+        if extract is not None:                 # (5) isolate main content, keep <head>/CSS
+            sels = HEURISTIC if extract is True else extract
+            try:
+                page.evaluate("""(sels) => {
+                    let el = null;
+                    for (const s of sels.split(',')) { el = document.querySelector(s.trim()); if (el) break; }
+                    if (el) document.body.replaceChildren(el);
+                }""", sels)
+            except Exception:
+                pass                            # no match -> leave full page
+        html = page.content()
+        browser.close()
+    return html
+
+
 def render_playwright(raw_html, items, width, src, source, chosen_labels, keep=None):
     """Default engine. Drives Playwright's own Chromium; page.pdf() returns the
     bytes over the protocol, so the script writes every file — no localhost, no
@@ -747,6 +847,7 @@ def main() -> None:
                   formatter_class=NLHelpFormatter)
     ap.add_argument("-V", "--version", action="version",
                     version=f"%(prog)s {__version__}\n")
+    ap.add_argument("--hidden", action=_HiddenHelpAction, help=argparse.SUPPRESS)
     ap.add_argument("source", help="saved .html file, or an http(s):// URL")
     ap.add_argument("tempdir", nargs="?", metavar="[tempdir]",
                     help="output base dir for the dated run folder (default: per-OS scratch)")
@@ -766,6 +867,11 @@ def main() -> None:
                     help="tag the dated folder, e.g. --suffix vacation -> 2026-06-29.vacation")
     ap.add_argument("--chromium", action="store_true",
                     help="use a Chromium-family browser already installed (no Playwright)")
+    # Undocumented (experimental) — live-render capture for JS single-page apps.
+    ap.add_argument("--raw", action="store_true", help=argparse.SUPPRESS)
+    ap.add_argument("--wait", default="networkidle", help=argparse.SUPPRESS)
+    ap.add_argument("--scroll", nargs="?", type=int, const=1, default=None, help=argparse.SUPPRESS)
+    ap.add_argument("--main", nargs="?", const=True, default=None, help=argparse.SUPPRESS)
     ap.add_argument("--install", action="store_true",
                     help="install Playwright + its Chromium, then run")
     ap.add_argument("--no-open", action="store_true",
@@ -802,8 +908,15 @@ def main() -> None:
     # Read the source HTML. For a saved file, remember its folder so the sibling
     # <name>_files/ assets can be served alongside the patched copy below.
     src = None
+    # Default for URLs on the Playwright engine: live-capture (navigate + hydrate +
+    # freeze). --raw or --chromium keep the plain urllib snapshot.
+    live = is_url(args.source) and not args.chromium and not args.raw
     if is_url(args.source):
-        html = fetch_url(args.source)
+        if live:
+            install_playwright() if args.install else ensure_playwright()  # needed before capture
+            html = live_capture(args.source, args.wait, args.scroll, args.main)
+        else:
+            html = fetch_url(args.source)
         stem = slug_from_url(args.source)
     else:
         src = Path(args.source).expanduser().resolve()
@@ -828,7 +941,8 @@ def main() -> None:
                           outdir / m / f"{stem}_{m}.{lab}.pdf"))
 
     print(f"{ap.prog} {__version__}")
-    print(f"  engine:      {'system Chromium' if args.chromium else 'Playwright'}")
+    fetch_note = " (live-capture)" if live else (" (raw fetch)" if is_url(args.source) and not args.chromium else "")
+    print(f"  engine:      {'system Chromium' if args.chromium else 'Playwright'}{fetch_note}")
     print(f"  source:      {args.source}")
     print(f"  width:       {args.width}px  (for the 'page' scale-to-fit layout)")
     print(f"  output dir:  {outdir}{os.sep}")
@@ -838,7 +952,8 @@ def main() -> None:
     if args.chromium:
         chosen_pdfs, overlays = render_chromium(html, items, args.width, src, args.source, chosen_labels, keep)
     else:
-        install_playwright() if args.install else ensure_playwright()
+        if not live:                       # the live-URL path already ensured Playwright
+            install_playwright() if args.install else ensure_playwright()
         chosen_pdfs, overlays = render_playwright(html, items, args.width, src, args.source, chosen_labels, keep)
 
     # FYI page-snoop: overlays the patch found and neutralised for print.
