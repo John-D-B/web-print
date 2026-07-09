@@ -29,8 +29,11 @@ Use that path; never search the filesystem for it.
 
 - `help` — print the Quick reference block below verbatim, then run<br/>
 &nbsp; &nbsp; `<skill-dir>/scripts/web-print.py --help` and print its output verbatim.
+
 - `version` — run `<skill-dir>/scripts/web-print.py -V`.
+
 - `license` — print the License block below verbatim.
+
 - `run`, or an inline source — render; see Run below.
 
 ## Quick reference (help output)
@@ -115,12 +118,16 @@ Commercial licensing enquiries: sales <at> mountain-informatik.ch
 
 - Forms: `skill web-print run` with `field: value` lines below it;<br/>
 &nbsp; &nbsp; `skill web-print SOURCE [flags]` inline; Claude Code: `/web-print SOURCE [flags]`.
+
 - `source` is required — if missing, print a one-line error pointing at<br/>
 &nbsp; &nbsp; `skill web-print help` and stop. Ignore unknown fields with a brief note.
+
 - Build the command from the PARAMETERS map in the Quick reference. Pass inline<br/>
 &nbsp; &nbsp; flags through unchanged, including the experimental capture flags<br/>
 &nbsp; &nbsp; (`--raw`, `--wait`, `--scroll`, `--main`).
+
 - Run it with Bash and relay the script's output. Surface any `error:` or<br/>
 &nbsp; &nbsp; `note:` line (e.g. the `--collapse-hero` suggestion) — never bury them.
+
 - If Playwright is missing, offer the two fixes: `install: true`, or<br/>
 &nbsp; &nbsp; `engine: chromium` to drive a browser already on the machine.
