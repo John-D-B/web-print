@@ -27,10 +27,10 @@ Use that path; never search the filesystem for it.
 
 ## Commands
 
-- `help` — print the Quick reference block below verbatim, then run<br/>
-&nbsp; &nbsp; `<skill-dir>/scripts/web-print.py --help` and print its output verbatim.
+- `help` — print the two fenced blocks below (Quick reference, then Script<br/>
+&nbsp; &nbsp; options) verbatim. No tool calls.
 
-- `version` — run `<skill-dir>/scripts/web-print.py -V`.
+- `version` — print the VERSION line from the Quick reference. No tool calls.
 
 - `license` — print the License block below verbatim.
 
@@ -38,14 +38,20 @@ Use that path; never search the filesystem for it.
 
 ## Quick reference (help output)
 
+`skill web-print help` prints the fenced block below, then the Script options
+block — both verbatim, no tool calls, nothing added. Never paraphrase them.
+
 ```
 NAME
     web-print — render a saved web page or a URL to clean, print-ready PDFs.
 
+VERSION
+    4.3.0
+
 COMMANDS (strict — nothing else triggers this skill)
     skill web-print run              # render; parameters follow as field: value
     skill web-print SOURCE [opts]    # render; source + flags inline on one line
-    skill web-print help             # this block, then the script's own --help
+    skill web-print help             # this block + the Script options block
     skill web-print version          # print the version and stop
     skill web-print license          # show the license and stop
 
@@ -62,9 +68,9 @@ PARAMETERS — each maps 1:1 onto a script option:
     open: false          ->  --no-open
 
 EVERYTHING ELSE
-    The script's --help is the authority on behaviour, defaults, modes
-    (audit + wysiwyg x 4 layouts = 8 PDFs), engines, and overlays.
-    `skill web-print help` shows it verbatim below this block.
+    The Script options block below is the script's own --help, embedded
+    verbatim at build time — behaviour, defaults, modes (audit + wysiwyg
+    x 4 layouts = 8 PDFs), engines, and overlays.
 
 EXAMPLES
     skill web-print run
@@ -76,6 +82,53 @@ EXAMPLES
     skill web-print run
       source: https://www.example.com/
       collapse-hero: true
+```
+
+## Script options (second half of the help output)
+
+<!-- GENERATED:HELP — from `web-print.py --help`; edit the script, then run zDev/make-skill.py -->
+
+```
+web-print.py 4.3.0
+usage: web-print.py [-h] [-V] [--just SPEC] [-o SPEC] [--width WIDTH]
+                    [--suffix SUFFIX] [--collapse-hero] [-v] [--chromium]
+                    [--install] [--no-open]
+                    source [[tempdir]]
+
+Make a printable PDF from a saved web page or URL.
+
+positional arguments:
+  source              saved .html file, or an http(s):// URL
+  [tempdir]           output base dir for the dated run folder (default: per-OS
+                      scratch)
+
+options:
+  -h, --help          show this help message and exit
+  -V, --version       show program's version number and exit
+  --just SPEC         audit|wysiwyg, portrait|landscape, page|reflow
+                      Faster operation: render just one style combination, not
+                      all.
+                      Default '--just all' renders all combinations, and opens:
+                          --just audit,portrait,page
+                          --just wysiwyg,portrait,page
+                      (reserved: not yet active)
+  -o, --overlay SPEC  also print the given overlay(s) as an appendix.
+                      SPEC: numbers, selectors, or 'all'. Comma-separated,
+                      repeatable.
+  --width WIDTH       render width in px for the 'page' (scale-to-fit) layout
+                      (default 1100)
+  --suffix SUFFIX     tag the dated folder, e.g. --suffix vacation ->
+                      2026-06-29.vacation
+  --collapse-hero     hide a decorative lead banner ("hero") that would print as
+                      a page of blank paper, pulling the title back up to the
+                      top of page 1. For page-builder sites; a run that would
+                      benefit prints a note suggesting this flag.
+                      default: OFF
+  -v, --verbose       show untruncated detail (e.g. full overlay selectors)
+  --chromium          use a Chromium-family browser already installed (no
+                      Playwright)
+  --install           install Playwright + its Chromium, then run
+  --no-open           do not open the original page or the PDFs afterwards
 ```
 
 ## License (license output)
