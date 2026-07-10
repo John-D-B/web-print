@@ -60,7 +60,7 @@ Overlays & pop-ups:
   its links can). Reference an overlay by its index, its selector, or 'all'.
 """
 
-__version__ = "4.3.0"
+__version__ = "4.4.0"
 
 import argparse
 import functools

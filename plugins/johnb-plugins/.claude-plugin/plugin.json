@@ -1,7 +1,7 @@
 {
   "name": "johnb-plugins",
   "description": "JohnB's plugin collection. Currently bundles the web-print skill.",
-  "version": "4.3.1",
+  "version": "4.4.0",
   "author": {
     "name": "JohnB"
   },
