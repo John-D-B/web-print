@@ -28,9 +28,9 @@ Each block is labelled with the section that documents it in full; jump there if
 ```bash
 # L1.A — system libraries (root, once per machine)
 $ sudo apt-get update && sudo apt-get install -y \
-    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-    libgbm1 libpango-1.0-0 libcairo2 libasound2
+    libgbm1 libpango-1.0-0 libcairo2 libasound2t64
 
 # (README 4B) — clone the repo
 $ git clone https://github.com/John-D-B/web-print.git
@@ -72,13 +72,17 @@ L1.C is troubleshooting only.
 ```bash
 $ sudo apt-get update
 $ sudo apt-get install -y \
-    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libnss3 libnspr4 libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
-    libgbm1 libpango-1.0-0 libcairo2 libasound2
+    libgbm1 libpango-1.0-0 libcairo2 libasound2t64
 ```
 
 This is exactly the set `playwright install-deps` would install.<br/>
 Running apt directly works regardless of how you installed the Python packages in L2.
+
+The `t64` suffixes are Ubuntu's 64-bit `time_t` transition (24.04 onward);<br/>
+&nbsp; &nbsp; `libasound2t64` in particular must be named explicitly, since bare `libasound2`<br/>
+&nbsp; &nbsp; is now a virtual package with two providers and apt refuses to guess.
 
 ### L1.B — Install via `playwright install-deps` (alternative)
 
