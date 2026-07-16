@@ -45,7 +45,7 @@ NAME
     web-print — render a saved web page or a URL to clean, print-ready PDFs.
 
 VERSION
-    4.4.0
+    4.5.0
 
 COMMANDS (strict — nothing else triggers this skill)
     skill web-print run              # render; parameters follow as field: value

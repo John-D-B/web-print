@@ -60,7 +60,7 @@ Overlays & pop-ups:
   its links can). Reference an overlay by its index, its selector, or 'all'.
 """
 
-__version__ = "4.4.0"
+__version__ = "4.5.0"
 
 import argparse
 import functools
@@ -75,7 +75,6 @@ import tempfile
 import textwrap
 import threading
 import urllib.request
-import webbrowser
 from datetime import date
 from html import escape as html_escape
 from pathlib import Path
@@ -291,6 +290,28 @@ def default_tempdir() -> str:
     else:  # Windows / anything without /tmp
         prefix = os.path.join(tempfile.gettempdir(), "claude")
     return os.path.join(prefix, "web-print")
+
+
+def open_target(target: str) -> None:
+    """Open a URL or a local file in the OS's default handler, cross-platform.
+
+    Deliberately avoids webbrowser.open: on macOS its default controller opens
+    via the AppleScript `open location`, which cannot open file:// URLs and then
+    cascades through webbrowser's hardcoded browser list — emitting spurious
+    `-43` and `can't get application "chrome"` (`-1728`) errors on the local-file
+    opens. The behaviour also varies by Python version (broken on 3.9 / 3.13,
+    quiet on 3.14). The per-OS openers below take a URL or a plain path directly
+    and behave identically on every Python.
+    """
+    try:
+        if sys.platform == "win32":
+            os.startfile(target)                       # noqa: type - Windows-only
+        elif sys.platform == "darwin":
+            subprocess.run(["open", target], check=False)
+        else:                                          # Linux / *BSD / WSL
+            subprocess.run(["xdg-open", target], check=False)
+    except Exception:
+        pass  # opening is a convenience; never let it fail an otherwise-good run
 
 
 def find_chrome() -> str:
@@ -1156,15 +1177,16 @@ def main() -> None:
         print("  opening:     no (--no-open)")
     else:
         print("  opening:")
-        # Original page first, so it sits alongside the clean PDFs — a live
-        # before/after. On Windows the PDFs open as Edge tabs, so the original
-        # becomes the first tab next to the two Web-Print results.
-        original = args.source if is_url(args.source) else Path(args.source).resolve().as_uri()
+        # Original page first, then the two PDFs — a live before/after. Each
+        # target (URL or local file) goes to the OS default handler via
+        # open_target(): the original opens in the browser, the PDFs in the
+        # default PDF viewer.
+        original = args.source if is_url(args.source) else str(Path(args.source).resolve())
         print(f"  {args.source}   (original page)")
-        webbrowser.open(original)
+        open_target(original)
         for cp in chosen_pdfs:
             print(f"  {cp}")
-            webbrowser.open(cp.as_uri())
+            open_target(str(cp))
     print()
 
 
