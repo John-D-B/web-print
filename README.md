@@ -451,34 +451,56 @@ $ pip install -r bin/requirements.txt
 $ python3 -m playwright install chromium
 ```
 
+**Test the script**
+```bash
+$ python3 bin/web-print.py --help
+$ python3 bin/web-print.py ./tests/bad-print-testcase.html
+$ python3 bin/web-print.py https://en.wikipedia.org/wiki/PDF
+```
+
+The script will produce two editions of "fixed" PDFs, and launch a viewer.
+
 <br/>
 
-### 4B. MS-Windows PowerShell
+### 4C. MS-Windows PowerShell
 
 **Clone the GitHub repository onto your computer**
 
-```bash
-PS> mkdir -p ~/repositories/
-PS> cd       ~/repositories/
+```powershell
+PS> mkdir $HOME\repositories
+PS> cd    $HOME\repositories
 PS> git clone https://github.com/John-D-B/web-print.git
-PS> cd       ~/repositories/web-print/
+PS> cd    $HOME\repositories\web-print
 ```
 
 *Optional but encouraged — create and activate an isolated environment:*
-```bash
-PS> python3 -m venv .venv
-PS> source .venv/bin/activate
+```powershell
+PS> python -m venv .venv            # 'python' or 'py -m venv'; Windows rarely has 'python3'
+PS> .venv\Scripts\Activate.ps1      # PS activation script — NOT 'source .venv/bin/activate'
+```
+*If activation is blocked by the execution policy:*
+```powershell
+PS> Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 ```
 
 **Install the prerequisites**
-```bash
+```powershell
 # - Info:
-PS> cat bin/requirements.txt
+PS> cat bin\requirements.txt
 
 # - Installation
-PS> pip install -r bin/requirements.txt
-PS> python3 -m playwright install chromium
+PS> python -m pip install -r bin\requirements.txt
+PS> python -m playwright install chromium
 ```
+
+**Test the script**
+```powershell
+PS> python bin\web-print.py --help
+PS> python bin\web-print.py .\tests\bad-print-testcase.html
+PS> python bin\web-print.py https://en.wikipedia.org/wiki/PDF
+```
+
+The script will produce two editions of "fixed" PDFs, and launch a viewer.
 
 <br/>
 
@@ -496,7 +518,7 @@ $ sudo apt-get update && sudo apt-get install -y \
     libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
     libgbm1 libpango-1.0-0 libcairo2 libasound2t64
 
-# (README 4B) — clone the repo
+# (see 4B / 4C) — clone the repo
 $ git clone https://github.com/John-D-B/web-print.git
 $ cd web-print
 
@@ -508,13 +530,6 @@ $ pip install -r bin/requirements.txt
 $ python3 -m playwright install chromium
 
 # L4 — test
-$ python3 bin/web-print.py https://en.wikipedia.org/wiki/PDF
-```
-
-<br/>
-
-### 4E. Test the Script
-```bash
 $ python3 bin/web-print.py --help
 $ python3 bin/web-print.py ./tests/bad-print-testcase.html
 $ python3 bin/web-print.py https://en.wikipedia.org/wiki/PDF

@@ -44,6 +44,8 @@ $ pip install -r bin/requirements.txt
 $ python3 -m playwright install chromium
 
 # L4 — test
+$ python3 bin/web-print.py --help
+$ python3 bin/web-print.py ./tests/bad-print-testcase.html
 $ python3 bin/web-print.py https://en.wikipedia.org/wiki/PDF
 ```
 
