@@ -401,9 +401,13 @@ skill web-print .../tests/bad-print-testcase.html   # - Supply a correct file pa
 ## 4. Alternate Script-Only Installation
 
 <details>
-<summary><em>This describes how to manually install just the Python script itself, outside of Claude.</em><br/>
-<em>This runs entirely on your own computer — free, with no API tokens and no per-use cost.<br/>
-&nbsp; &nbsp; Good for high-volume use, or anyone who'd rather not pay for Claude Code at all.</em></summary>
+<summary><em>This describes how to manually install just the Python script itself, outside of Claude.</em>
+</summary>
+
+<br/>
+
+This runs entirely on your own computer — free, with no API tokens and no per-use cost.<br/>
+&nbsp; &nbsp; Good for high-volume use, or anyone who'd rather not pay for Claude Code at all.
 
 ### 4A. Ecosystem
 Ensure your computer already has these items installed:
@@ -415,10 +419,15 @@ Ensure your computer already has these items installed:
 These are standard in modern Bash environments on MacOS, Linux, & WSL,<br/>
 &nbsp; &nbsp; but may require explicit steps in Microsoft PowerShell.
 
-The instructions here are for Bash shells (MacOS, Linux, WSL).<br/>
-Similar commands also work in Microsoft PowerShell, but not described here.
+<br/>
 
-### 4B. Clone the GitHub repository onto your computer
+### 4B. MacOS Bash
+
+The instructions here are for a Bash shell on MacOS.<br/>
+MacOS **zsh** works too.
+
+**Clone the GitHub repository onto your computer**
+
 ```bash
 $ mkdir -p ~/repositories/
 $ cd       ~/repositories/
@@ -432,7 +441,7 @@ $ python3 -m venv .venv
 $ source .venv/bin/activate
 ```
 
-### 4C. Install the prerequisites
+**Install the prerequisites**
 ```bash
 # - Info:
 $ cat bin/requirements.txt
@@ -442,7 +451,69 @@ $ pip install -r bin/requirements.txt
 $ python3 -m playwright install chromium
 ```
 
-### 4D. Test the Script
+<br/>
+
+### 4B. MS-Windows PowerShell
+
+**Clone the GitHub repository onto your computer**
+
+```bash
+PS> mkdir -p ~/repositories/
+PS> cd       ~/repositories/
+PS> git clone https://github.com/John-D-B/web-print.git
+PS> cd       ~/repositories/web-print/
+```
+
+*Optional but encouraged — create and activate an isolated environment:*
+```bash
+PS> python3 -m venv .venv
+PS> source .venv/bin/activate
+```
+
+**Install the prerequisites**
+```bash
+# - Info:
+PS> cat bin/requirements.txt
+
+# - Installation
+PS> pip install -r bin/requirements.txt
+PS> python3 -m playwright install chromium
+```
+
+<br/>
+
+### 4D. Linux: Debian, Ubuntu, WSL
+
+The instructions here are for a Bash shell in Linux environments.<br/>
+For more info, see the accompanying doc **README-Linux.md**
+
+**Order of operations (at a glance)**
+
+```bash
+# L1.A — system libraries (root, once per machine)
+$ sudo apt-get update && sudo apt-get install -y \
+    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+    libgbm1 libpango-1.0-0 libcairo2 libasound2
+
+# (README 4B) — clone the repo
+$ git clone https://github.com/John-D-B/web-print.git
+$ cd web-print
+
+# L2.A — python packages in a venv   (or L2.B for a system-wide /usr/local install)
+$ python3 -m venv .venv && source .venv/bin/activate
+$ pip install -r bin/requirements.txt
+
+# L3 — browser binary
+$ python3 -m playwright install chromium
+
+# L4 — test
+$ python3 bin/web-print.py https://en.wikipedia.org/wiki/PDF
+```
+
+<br/>
+
+### 4E. Test the Script
 ```bash
 $ python3 bin/web-print.py --help
 $ python3 bin/web-print.py ./tests/bad-print-testcase.html
