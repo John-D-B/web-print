@@ -60,7 +60,7 @@ Overlays & pop-ups:
   its links can). Reference an overlay by its index, its selector, or 'all'.
 """
 
-__version__ = "4.5.0"
+__version__ = "5.0.0"
 
 import argparse
 import functools
@@ -503,6 +503,14 @@ html, body {{ overflow: visible !important; height: auto !important;
   opacity: 1 !important; visibility: visible !important;
   transform: none !important; filter: none !important;
   animation: none !important; transition: none !important;
+}}
+/* (B2) Wix keeps content visibility:hidden until an on-scroll IntersectionObserver
+   reveals it; with the page's scripts frozen that reveal never fires, so whole
+   repeaters/sections print blank. Un-hide them — but only visibility/opacity, NOT
+   transform: a Wix "fluid-columns" repeater positions its cards with transforms,
+   and clearing those stacks every card on top of the first. */
+[class*="wixui-"], fluid-columns-repeater, [data-motion-part], [data-motion-enter] {{
+  visibility: visible !important; opacity: 1 !important;
 }}
 
 @media print {{
@@ -1006,6 +1014,186 @@ def render_chromium(raw_html, items, width, src, source, chosen_labels, keep=Non
         httpd.shutdown()
 
 
+_PROBLEM_TITLES = {
+    "no-print-css":     "No print stylesheet",
+    "reveal-on-scroll": "Content hidden until you scroll",
+    "virtual-repeater": "Virtualized list — only part is in the page",
+    "system-font":      "OS-UI font (printer-crash risk)",
+    "fixed-overlays":   "Fixed overlays leak onto every page",
+    "blank-hero":       "Blank hero as the first page",
+}
+
+
+def _excerpt(html, needle, kind="around", pad=90, cap=200):
+    """A short, whitespace-collapsed page snippet used as evidence in the report.
+    kind='tag' returns the opening tag containing `needle`; kind='around' returns a
+    small window centred on it. Empty string when not found."""
+    i = html.lower().find(needle.lower())
+    if i < 0:
+        return ""
+    if kind == "tag":
+        s, e = html.rfind("<", 0, i), html.find(">", i)
+        frag = html[s:e + 1] if (s >= 0 and e >= 0) else ""
+    else:
+        frag = "..." + html[max(0, i - pad): i + len(needle) + pad] + "..."
+    frag = re.sub(r"\s+", " ", frag).strip()
+    return (frag[:cap] + "...") if len(frag) > cap else frag
+
+
+def diagnose_print_problems(html, overlays, hero_hint):
+    """Infer, from the captured HTML + the overlays the patch found, why this page
+    prints badly. Returns (authoring_stack, findings); each finding is a dict with
+    the problem, the author-side fix, and the work-around web-print applied.
+    Heuristic and best-effort — it reports what it can recognise, not a proof."""
+    low = html.lower()
+    if "wixui-" in low or "wix.com" in low or "fluid-columns-repeater" in low:
+        stack = "Wix"
+    elif "et_pb_" in low:
+        stack = "Divi (WordPress page builder)"
+    elif "elementor" in low:
+        stack = "Elementor (WordPress page builder)"
+    elif "wp-content" in low:
+        stack = "WordPress"
+    else:
+        stack = "not identified"
+
+    F = []
+    if "@media print" not in low:
+        F.append(dict(key="no-print-css",
+            problem="The page ships no `@media print` stylesheet. At print time the browser "
+                    "falls back to the on-screen layout, which assumes endless scroll and "
+                    "dynamic positioning — the opposite of what a paginated page needs.",
+            fix="Add an `@media print { ... }` block: lay the content out as one readable "
+                "column and hide screen-only chrome.",
+            workaround="Injected a print stylesheet — single-column reflow, page breaks, and "
+                       "an ink-friendly colour pass."))
+
+    if ("visibility:hidden" in low or "visibility: hidden" in low
+            or "data-motion" in low or "et_animated" in low or "data-aos" in low):
+        F.append(dict(key="reveal-on-scroll",
+            problem="Blocks of content are held `visibility:hidden` / `opacity:0` until an "
+                    "on-scroll animation reveals them. Printing never scrolls, so that content "
+                    "stays invisible and comes out blank.",
+            fix="Make the visible state the default and treat the animation as enhancement, or "
+                "disable the reveal under `@media print` and `prefers-reduced-motion`.",
+            workaround="Forced `visibility:visible; opacity:1` on the affected containers, "
+                       "without disturbing their layout transforms.",
+            evidence=(_excerpt(html, "visibility:hidden") or _excerpt(html, "visibility: hidden")),
+            evidence_lang="css"))
+
+    if "fluid-columns-repeater" in low or "wixui-repeater" in low:
+        F.append(dict(key="virtual-repeater",
+            problem="The list is a virtualized repeater: only the items near the viewport exist "
+                    "in the page at any moment; the rest are created as you scroll and recycled "
+                    "as you pass. A single snapshot therefore holds only a fraction of the list.",
+            fix="Offer a non-virtualized or server-rendered version for print and crawlers — a "
+                "plain list under `@media print`, or a \"view all\" page — so the whole list "
+                "exists in one document.",
+            workaround="Captured the items present at snapshot time; entries beyond the rendered "
+                       "window are not included. This is web-print's current hard edge for such "
+                       "lists.",
+            evidence=(_excerpt(html, "<fluid-columns-repeater", kind="tag")
+                      or _excerpt(html, "wixui-repeater", kind="tag")),
+            evidence_lang="html"))
+
+    if any(k in low for k in ("system-ui", "-apple-system", "blinkmacsystemfont")):
+        F.append(dict(key="system-font",
+            problem="The font stack leans on the OS UI font (`system-ui` / `-apple-system`). "
+                    "Headless Chromium can embed that as a Type 3 font, which crashes some "
+                    "office and enterprise printers (for example the HP \"49 Service Error\").",
+            fix="Name a real embeddable family (Arial/Helvetica, or a bundled web font) in the "
+                "print stack, not only the OS UI keyword.",
+            workaround="Remapped the OS-UI font keywords to Arial, which embeds cleanly as a "
+                       "subsetted TrueType font.",
+            evidence=(_excerpt(html, "-apple-system") or _excerpt(html, "system-ui")),
+            evidence_lang="css"))
+
+    fixed = [o for o in overlays if o.get("type") not in (None, "document")]
+    if fixed:
+        names = ", ".join(n for n in sorted(
+            {(o.get("label") or o.get("sel") or "").strip() for o in fixed}) if n)[:120]
+        F.append(dict(key="fixed-overlays",
+            problem=f"{len(fixed)} fixed/sticky overlay(s) ({names}) are hidden only under "
+                    "`@media only screen`, so at print time they are never told to step aside "
+                    "and would repeat on every page.",
+            fix="Scope overlay, sticky-header, and cookie-banner styles so they are "
+                "`display:none` under `@media print` as well as being dismissible.",
+            workaround="Detected and neutralised these overlays for print (see the run's overlay "
+                       "table).",
+            evidence="\n".join(o.get("sel", "") for o in fixed[:4] if o.get("sel")),
+            evidence_lang="css"))
+
+    if hero_hint:
+        F.append(dict(key="blank-hero",
+            problem="The page opens with a tall, near-empty decorative hero that prints as a "
+                    "blank first page and pushes the real title down.",
+            fix="Cap the hero height for print, or drop purely-decorative banners under "
+                "`@media print`.",
+            workaround="Can collapse the hero with `--collapse-hero` (auto-suggested when a run "
+                       "needs it)."))
+    return stack, F
+
+
+def write_print_report(outdir, source, stem, html, overlays, hero_hint):
+    """Write a parallel `<stem>.print-report.md`: why the page prints badly, the small
+    fixes its authors could make, and what web-print did to produce a clean PDF anyway.
+    Aimed at feeding constructive fixes back to site owners."""
+    from datetime import datetime
+    stack, F = diagnose_print_problems(html, overlays, hero_hint)
+    ts = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z").strip()
+    def title(k):
+        return _PROBLEM_TITLES.get(k, k)
+
+    L = [f"# Print diagnostics — {stem}", ""]
+    L += [f"*Generated by web-print {__version__}. A record of why this page prints badly, "
+          f"the small standards-based fixes its authors could make, and the work-arounds "
+          f"web-print applied to produce a clean PDF anyway.*", ""]
+
+    L += ["## 1. What was captured", "",
+          f"- **Source:** {source}",
+          f"- **Captured:** {ts}",
+          f"- **Authoring stack (detected):** {stack}",
+          f"- **Output folder:** `{outdir}`", ""]
+
+    if not F:
+        L += ["## 2. Problems found", "",
+              "None detected — the page paginated cleanly.", ""]
+    else:
+        L += ["## 2. Problems found that break printing", ""]
+        for i, f in enumerate(F, 1):
+            L += [f"### 2.{i} {title(f['key'])}", "", f["problem"], ""]
+            if f.get("evidence"):
+                L += ["Evidence — excerpt from the page:", "",
+                      f"```{f.get('evidence_lang', '')}", f["evidence"], "```", ""]
+
+        L += ["## 3. How the site's authors could fix it", "",
+              "Each fix is small and standards-based — mostly the print stylesheet the page "
+              "never wrote:", ""]
+        for i, f in enumerate(F, 1):
+            L += [f"{i}. **{title(f['key'])}:** {f['fix']}", ""]
+
+        L += ["## 4. What web-print did to work around it", ""]
+        for i, f in enumerate(F, 1):
+            L += [f"{i}. **{title(f['key'])}:** {f['workaround']}", ""]
+
+    L += ["## 5. Commentary", "",
+          "A programme page like this is meant to be *reviewed*: a list you print, spread on a "
+          "table, and mark up with colleagues over coffee. When the page can't produce a "
+          "faithful printed copy, that option quietly disappears — not because of anything in "
+          "the content, but because printing was never on the requirements list. It is a small, "
+          "fixable gap, and a good one to close: a short print stylesheet costs the author little "
+          "and hands every reader back a durable, shareable artifact.", "",
+          "---", "",
+          f"*Generated by **web-print {__version__}**. Original software by John Buehrer (JohnB), "
+          f"with AI pair-programming support by Anthropic Claude Code. "
+          f"© 2026 Mountain Informatik GmbH.*", "",
+          "*<https://github.com/John-D-B/web-print>*", ""]
+
+    path = outdir / f"{stem}.print-report.md"
+    path.write_text("\n".join(L), encoding="utf-8")
+    return path
+
+
 def main() -> None:
     ap = NLParser(description="Make a printable PDF from a saved web page or URL.",
                   formatter_class=NLHelpFormatter)
@@ -1048,6 +1236,8 @@ def main() -> None:
                     help="install Playwright + its Chromium, then run")
     ap.add_argument("--no-open", action="store_true",
                     help="do not open the original page or the PDFs afterwards")
+    ap.add_argument("--no-report", action="store_true",
+                    help="do not write the <name>.print-report.md diagnostics file")
     args = ap.parse_args()
 
     # Parse --overlay into (all?, [numbers], [selectors]) for the patch.
@@ -1172,6 +1362,10 @@ def main() -> None:
               f"(~{int(hero_hint * 0.75)}pt of blank paper).\n"
               f"  If page 1 prints mostly blank with the title far down, re-run adding:\n"
               f"      --collapse-hero\n")
+
+    if not args.no_report:
+        rpath = write_print_report(outdir, args.source, stem, html, uniq, hero_hint)
+        print(f"  report:      {rpath}")
 
     if args.no_open:
         print("  opening:     no (--no-open)")
